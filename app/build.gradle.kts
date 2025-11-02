@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import com.android.build.api.artifact.SingleArtifact
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -62,6 +64,7 @@ android {
     buildFeatures { prefab = true }
 
     buildTypes {
+        debug { isMinifyEnabled = false }
         release {
             isMinifyEnabled = true
             proguardFiles(
@@ -91,187 +94,130 @@ dependencies {
     implementation(libs.org.lsposed.libcxx.libcxx)
 }
 
-afterEvaluate {
-    android.applicationVariants.forEach { variant ->
-        val variantName = variant.name
-        val capitalized = variantName.replaceFirstChar { it.uppercase() }
-        val tempModuleDir = project.layout.buildDirectory.dir("tmp/module-${variantName}")
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        val capitalized = variant.name.replaceFirstChar { it.uppercase() }
+        val isDebug = variant.buildType == "debug"
 
-        tasks.register("copyFiles${capitalized}") {
-            dependsOn("assemble${capitalized}")
-            val moduleFolder = project.rootDir.resolve("module")
-            val buildDir = project.layout.buildDirectory
+        // --- Define output locations and file names ---
+        // Stage all files in a temporary directory inside 'build' before zipping
+        val tempModuleDir = project.layout.buildDirectory.dir("module/${variant.name}")
+        val zipFileName = "TEESimulator-$verName-$gitCommitCount-$gitCommitHash-$capitalized.zip"
 
-            doLast {
-                val isDebug = variantName.contains("debug", ignoreCase = true)
-                // val apkFile = variant.outputs.first().outputFile
+        // Task 1: Prepare all module files in the temporary build directory.
+        // Using Sync ensures that stale files from previous runs are removed.
+        val prepareModuleFilesTask =
+            tasks.register<Sync>("prepareModuleFiles${capitalized}") {
+                group = "TEESimulator Module Packaging"
+                description = "Prepares all files for the ${variant.name} module zip."
 
-                listOf("service.apk", "classes.dex").forEach { fileName ->
-                    val oldFile = moduleFolder.resolve(fileName)
-                    if (oldFile.exists()) oldFile.delete()
+                if (isDebug) {
+                    dependsOn("package${capitalized}")
+                } else {
+                    dependsOn("minify${capitalized}WithR8")
+                }
+                dependsOn("strip${capitalized}DebugSymbols")
+
+                // The Sync task will automatically depend on the tasks that produce these
+                // artifacts.
+                // This is the correct way to establish the dependency chain.
+                if (isDebug) {
+                    from(variant.artifacts.get(SingleArtifact.APK)) {
+                        include("*.apk")
+                        rename { "service.apk" }
+                    }
+                } else {
+                    from(
+                        project.layout.buildDirectory.dir(
+                            "intermediates/dex/${variant.name}/minify${capitalized}WithR8"
+                        )
+                    ) {
+                        include("classes.dex")
+                    }
                 }
 
-                // Select source file based on build type
-                val sourceFile =
-                    if (isDebug) {
-                        variant.outputs.first().outputFile
-                    } else {
-                        buildDir
-                            .get()
-                            .asFile
-                            .resolve("intermediates/dex/release/minifyReleaseWithR8/classes.dex")
-                    }
+                from(
+                    project.layout.buildDirectory.dir(
+                        "intermediates/stripped_native_libs/${variant.name}/strip${capitalized}DebugSymbols/out/lib"
+                    )
+                ) {
+                    into("lib") // Place them in the 'lib' subfolder of the staging directory.
+                    include("**/libinject.so", "**/libTEESimulator.so")
+                }
 
-                val destFileName = if (isDebug) "service.apk" else "classes.dex"
-                sourceFile.copyTo(moduleFolder.resolve(destFileName), overwrite = true)
+                // Now, copy and process the files from 'module' directory.
+                val sourceModuleDir = rootProject.projectDir.resolve("module")
+                from(sourceModuleDir) {
+                    exclude("module.prop") // Exclude the template file.
+                }
 
-                val soDir =
-                    buildDir
-                        .get()
-                        .asFile
-                        .resolve(
-                            "intermediates/stripped_native_libs/$variantName/strip${capitalized}DebugSymbols/out/lib"
-                        )
+                // Copy and filter the module.prop template separately.
+                from(sourceModuleDir) {
+                    include("module.prop")
+                    // Use expand() for simple key-value replacement.
+                    expand(
+                        "REPLACEMEVERCODE" to gitCommitCount.toString(),
+                        "REPLACEMEVER" to
+                            "$verName ($gitCommitCount-$gitCommitHash-${variant.name})",
+                    )
+                }
 
-                // apkFile.copyTo(moduleFolder.resolve("service.apk"), overwrite = true)
-
-                val allowedLibs = setOf("libinject.so", "libTEESimulator.so")
-                soDir
-                    .walk()
-                    .filter { it.isFile && it.name in allowedLibs }
-                    .forEach { soFile ->
-                        val abiFolder = soFile.parentFile.name
-                        val destination = moduleFolder.resolve("lib/$abiFolder/${soFile.name}")
-                        soFile.copyTo(destination, overwrite = true)
-                    }
+                // The destination for all the above 'from' operations.
+                into(tempModuleDir)
             }
-        }
 
-        // Prepare temp directory with all files
-        tasks.register("prepareModuleFiles${capitalized}") {
-            dependsOn("copyFiles${capitalized}")
-            val sourceDir = project.rootDir.resolve("module")
-
-            doLast {
-                val tempDir = tempModuleDir.get().asFile
-
-                // Clean and create temp directory
-                tempDir.deleteRecursively()
-                tempDir.mkdirs()
-
-                // Copy all files except module.prop
-                sourceDir
-                    .walkTopDown()
-                    .filter { it.isFile && it.name != "module.prop" }
-                    .forEach { sourceFile ->
-                        val relativePath = sourceFile.relativeTo(sourceDir)
-                        val destFile = tempDir.resolve(relativePath)
-                        destFile.parentFile.mkdirs()
-                        sourceFile.copyTo(destFile, overwrite = true)
-                    }
-
-                // Process module.prop
-                val sourceProp = sourceDir.resolve("module.prop")
-                val destProp = tempDir.resolve("module.prop")
-                val content = sourceProp.readText()
-                val processedContent =
-                    content
-                        .replace("REPLACEMEVERCODE", gitCommitCount.toString())
-                        .replace(
-                            "REPLACEMEVER",
-                            "$verName ($gitCommitCount-$gitCommitHash-$variantName)",
-                        )
-                destProp.writeText(processedContent)
-            }
-        }
-
-        // Zip task uses the temp directory
+        // Task 2: Zip the prepared files from the temporary directory.
         val zipTask =
             tasks.register<Zip>("zip${capitalized}") {
-                dependsOn("prepareModuleFiles${capitalized}")
-                archiveFileName.set(
-                    "TEESimulator-$verName-$gitCommitCount-$gitCommitHash-${capitalized}.zip"
-                )
+                group = "TEESimulator Module Packaging"
+                description = "Creates the flashable zip for the ${variant.name} module."
+                dependsOn(prepareModuleFilesTask)
+
+                archiveFileName.set(zipFileName)
                 destinationDirectory.set(project.rootDir.resolve("out"))
-                from(tempModuleDir)
+                from(tempModuleDir) // Zip the entire contents of the staging directory.
             }
 
-        val pushTask =
-            tasks.register<Exec>("push${capitalized}") {
-                group = "TEESimulator Module Installation"
-                dependsOn(zipTask)
-                commandLine(
-                    "adb",
-                    "push",
-                    zipTask.get().archiveFile.get().asFile,
-                    "/data/local/tmp",
-                )
-                description = "Pushes the $variantName module zip to the device."
-            }
+        // Task 3: A helper function to create installation tasks for different root providers.
+        fun createInstallTasks(rootProvider: String, installCli: String) {
+            val pushTask =
+                tasks.register<Exec>("push${rootProvider}Module${capitalized}") {
+                    group = "TEESimulator Module Installation"
+                    description =
+                        "Pushes the ${variant.name} module to the device for $rootProvider."
+                    dependsOn(zipTask)
+                    commandLine(
+                        "adb",
+                        "push",
+                        zipTask.get().archiveFile.get().asFile,
+                        "/data/local/tmp",
+                    )
+                }
 
-        // --- Magisk Install Tasks ---
-        val installMagiskTask =
-            tasks.register<Exec>("installMagisk${capitalized}") {
+            val installTask =
+                tasks.register<Exec>("install${rootProvider}${capitalized}") {
+                    group = "TEESimulator Module Installation"
+                    description = "Installs the ${variant.name} module via $rootProvider."
+                    dependsOn(pushTask)
+                    commandLine(
+                        "adb",
+                        "shell",
+                        "su",
+                        "-c",
+                        "$installCli /data/local/tmp/$zipFileName",
+                    )
+                }
+
+            tasks.register<Exec>("install${rootProvider}AndReboot${capitalized}") {
                 group = "TEESimulator Module Installation"
-                dependsOn(pushTask)
-                commandLine(
-                    "adb",
-                    "shell",
-                    "su",
-                    "-c",
-                    "magisk --install-module /data/local/tmp/${zipTask.get().archiveFileName.get()}",
-                )
-                description = "Installs the $variantName module via Magisk."
+                description = "Installs the ${variant.name} module via $rootProvider and reboots."
+                dependsOn(installTask)
+                commandLine("adb", "reboot")
             }
-        tasks.register<Exec>("installMagiskAndReboot${capitalized}") {
-            group = "TEESimulator Module Installation"
-            dependsOn(installMagiskTask)
-            commandLine("adb", "reboot")
-            description = "Installs the $variantName module via Magisk and reboots."
         }
 
-        // --- KernelSU Install Tasks ---
-        val installKsuTask =
-            tasks.register<Exec>("installKsu${capitalized}") {
-                group = "TEESimulator Module Installation"
-                dependsOn(pushTask)
-                commandLine(
-                    "adb",
-                    "shell",
-                    "su",
-                    "-c",
-                    "ksud module install /data/local/tmp/${zipTask.get().archiveFileName.get()}",
-                )
-                description = "Installs the $variantName module via KernelSU."
-            }
-        tasks.register<Exec>("installKsuAndReboot${capitalized}") {
-            group = "TEESimulator Module Installation"
-            dependsOn(installKsuTask)
-            commandLine("adb", "reboot")
-            description = "Installs the $variantName module via KernelSU and reboots."
-        }
-
-        // --- APatch Install Tasks ---
-        val installApatchTask =
-            tasks.register<Exec>("installApatch${capitalized}") {
-                group = "TEESimulator Module Installation"
-                dependsOn(pushTask)
-                commandLine(
-                    "adb",
-                    "shell",
-                    "su",
-                    "-c",
-                    "/data/adb/apd module install /data/local/tmp/${zipTask.get().archiveFileName.get()}",
-                )
-                description = "Installs the $variantName module via APatch."
-            }
-        tasks.register<Exec>("installApatchAndReboot${capitalized}") {
-            group = "TEESimulator Module Installation"
-            dependsOn(installApatchTask)
-            commandLine("adb", "reboot")
-            description = "Installs the $variantName module via APatch and reboots."
-        }
-
-        tasks["assemble${capitalized}"].finalizedBy("zip${capitalized}")
+        createInstallTasks("Magisk", "magisk --install-module")
+        createInstallTasks("Ksu", "ksud module install")
+        createInstallTasks("Apatch", "/data/adb/apd module install")
     }
 }

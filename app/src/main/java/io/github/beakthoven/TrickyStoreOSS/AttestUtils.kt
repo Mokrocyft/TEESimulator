@@ -110,8 +110,8 @@ object AttestUtils {
             val keyDescriptionSeq = ASN1Sequence.getInstance(ext.extnValue.octets)
             val encodables = keyDescriptionSeq.toArray()
 
-            val attestVersion = ASN1Integer.getInstance(encodables[0]).value.intValueExact()
-            val keymasterVersion = ASN1Integer.getInstance(encodables[2]).value.intValueExact()
+            val attestVersion = ASN1Integer.getInstance(encodables[0]).value.toInt()
+            val keymasterVersion = ASN1Integer.getInstance(encodables[2]).value.toInt()
             var attestVerifiedBootHash: ByteArray? = null
             var attestOSVersion: Int? = null
 
@@ -132,7 +132,7 @@ object AttestUtils {
                         attestOSVersion =
                             ASN1Integer.getInstance(tagged.baseObject.toASN1Primitive())
                                 .value
-                                .intValueExact()
+                                .toInt()
                     }
                 }
             }
