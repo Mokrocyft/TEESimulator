@@ -1,19 +1,14 @@
-**Key Highlights:**
+🚀 **TEESimulator v2.1 Hotfix Release is Live!** 🚀
 
-*   🚀 **Complete Refactoring:** TEESimulator v2.0 has been entirely rebuilt and is no longer based on its predecessors, [TrickyStore](https://github.com/5ec1cff/TrickyStore) and [TrickyStoreOSS](https://github.com/beakthoven/TrickyStoreOSS), resulting in a more streamlined and maintainable codebase.
+This urgent hotfix addresses several critical issues identified in the previous v2.0 release.
 
-*   🛡️ **Enhanced Bypass Capabilities:** The simulator now successfully bypasses well-known detection mechanisms, including [TamperedAttestation](https://github.com/JingMatrix/TamperedAttestation) and [KeyAttestation](https://github.com/JingMatrix/KeyAttestation).
+The v2.0 update, a significant refactoring effort, unfortunately introduced a few unexpected behaviors and bugs that we are now rectifying.
 
-*   💳 **Revolut Detection Bypass:** With a valid keybox, users can now circumvent the detection measures implemented in the [Revolut](https://play.google.com/store/apps/details?id=com.revolut.revolut) application.
+**Key fixes in this release include:**
+1.  **Google Play Integrity:** Resolved an issue preventing the attainment of STRONG integrity for Google Play verdicts, caused by an incorrect vendor patch level format. ✅
+2.  **Application Stability:** Fixed a critical crash related to an incorrect signature for the `SystemProperties.set` stub method. 🐛
+3.  **Stealth Enhancement:** Implemented a fix to bypass detection by the `Android Native Detector`. 👻
 
-**Current Limitations:**
+🔬 We are actively investigating a recent detection method to further enhance stealth capabilities.
 
-*   ⚠️ **Google Play Verdict:** Bypassing the detections within the Google Play verdict remains an unresolved challenge. We are actively seeking solutions and welcome any insights from the community regarding potential system module-based bypasses.
-
-**Platform Support:**
-
-*   📱 **Android 10 & 11:** TEESimulator v2.0 has not yet been tested on Android 10 or 11. We encourage users on these platforms to report any issues and provide logs to help us improve compatibility.
-
-**Contributing:**
-
-*   🤝 We welcome and encourage community contributions. Please feel free to submit issues and pull requests to help improve the project.
+🙏 Support for TEE-broken devices and Android 10/11 remains an area of ongoing improvement. We highly encourage you to submit any issues you encounter to help us refine these aspects! 🤝
