@@ -1,14 +1,21 @@
-🚀 **TEESimulator v2.1 Hotfix Release is Live!** 🚀
+TEESimulator 3.0 is a significant update focused on powerful new configuration options, major improvements to stealth, and enhanced stability.
 
-This urgent hotfix addresses several critical issues identified in the previous v2.0 release.
+#### ✨ **Highlights & New Features**
 
-The v2.0 update, a significant refactoring effort, unfortunately introduced a few unexpected behaviors and bugs that we are now rectifying.
+*   **🎯 Per-App Security Patch Configuration**: Gain ultimate control by setting security patch levels on a per-package basis. Define a global default in `security_patch.txt` and override it for specific apps like `[com.google.android.gms]`. Moreover, your configuration is now alive! Use the `today` keyword to always report the current date, or create rolling dates with templates like `YYYY-MM-05`. Be sure to check README for more details.
+*   **🕰️ Full Software Emulation on Android 11**: We've implemented a complete, software-based key generation and attestation flow for the legacy `IKeystoreService` API, bringing full emulation capabilities to older devices.
 
-**Key fixes in this release include:**
-1.  **Google Play Integrity:** Resolved an issue preventing the attainment of STRONG integrity for Google Play verdicts, caused by an incorrect vendor patch level format. ✅
-2.  **Application Stability:** Fixed a critical crash related to an incorrect signature for the `SystemProperties.set` stub method. 🐛
-3.  **Stealth Enhancement:** Implemented a fix to bypass detection by the `Android Native Detector`. 👻
+#### 🛡️ **Stealth & Evasion Upgrades**
 
-🔬 We are actively investigating a recent detection method to further enhance stealth capabilities.
+*   **⛓️ Consistent Certificate Signatures**: Say goodbye to a major detection vector in `icu.nullptr.nativetest`. Patched certificates are now cached, ensuring that every request for a key returns a byte-for-byte identical certificate, just like a real TEE.
+*   **🔑 Authentic Device Properties**: To appear more genuine, the simulator now sources and uses your device's real `verifiedBootHash` and `moduleHash`, moving away from placeholder values.
+*   **📜 Structurally Sound Certificates**: The patching logic has been rewritten to be less intrusive. It now modifies the attestation extension in-place, preserving the original order of other extensions and preventing duplicates to avoid suspicion.
 
-🙏 Support for TEE-broken devices and Android 10/11 remains an area of ongoing improvement. We highly encourage you to submit any issues you encounter to help us refine these aspects! 🤝
+#### 🐛 **Bug Fixes & Reliability**
+
+*   ✅ **Robust Crypto Engine**: Fixed critical crashes related to cryptographic provider conflicts. The signing logic is now more explicit and the KeyBox parser is more resilient against malformed files.
+*   ➡️ **Improved Compatibility**: Resolved a native crash on Android 11 devices.
+
+#### 🚀 **The Road Ahead**
+
+Our work to fix detection vectors and provide full support for TEE-broken devices and Android 10/11 is ongoing. We welcome your feedback! Please **report any issues** or **contribute a pull request** on our GitHub.
