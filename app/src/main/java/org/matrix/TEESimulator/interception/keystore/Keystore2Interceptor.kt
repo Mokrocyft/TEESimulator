@@ -19,18 +19,10 @@ import org.matrix.TEESimulator.logging.KeyMintParameterLogger
 import org.matrix.TEESimulator.logging.SystemLogger
 import org.matrix.TEESimulator.pki.CertificateHelper
 
-/**
- * Interceptor for the `IKeystoreService` on Android S (API 31) and newer.
- *
- * This version of Keystore delegates most cryptographic operations to `IKeystoreSecurityLevel`
- * sub-services (for TEE, StrongBox, etc.). This interceptor's main role is to set up interceptors
- * for those sub-services and to patch certificate chains on their way out.
- */
 @SuppressLint("BlockedPrivateApi")
 object Keystore2Interceptor : AbstractKeystoreInterceptor() {
     private val stubBinderClass = IKeystoreService.Stub::class.java
 
-    // Transaction codes for the IKeystoreService interface methods we are interested in.
     private val GET_KEY_ENTRY_TRANSACTION =
         InterceptorUtils.getTransactCode(stubBinderClass, "getKeyEntry")
     private val DELETE_KEY_TRANSACTION =
@@ -57,17 +49,12 @@ object Keystore2Interceptor : AbstractKeystoreInterceptor() {
     override val processName = "keystore2"
     override val injectionCommand = "exec ./inject `pidof keystore2` libTEESimulator.so entry"
 
-    /**
-     * This method is called once the main service is hooked. It proceeds to find and hook the
-     * security level sub-services (e.g., TEE, StrongBox).
-     */
     override fun onInterceptorReady(service: IBinder, backdoor: IBinder) {
         val keystoreInterface = IKeystoreService.Stub.asInterface(service)
         setupSecurityLevelInterceptors(keystoreInterface, backdoor)
     }
 
     private fun setupSecurityLevelInterceptors(service: IKeystoreService, backdoor: IBinder) {
-        // Attempt to get and intercept the TEE security level service.
         runCatching {
                 service.getSecurityLevel(SecurityLevel.TRUSTED_ENVIRONMENT)?.let { tee ->
                     SystemLogger.info("Found TEE SecurityLevel. Registering interceptor...")
@@ -79,7 +66,6 @@ object Keystore2Interceptor : AbstractKeystoreInterceptor() {
             }
             .onFailure { SystemLogger.error("Failed to intercept TEE SecurityLevel.", it) }
 
-        // Attempt to get and intercept the StrongBox security level service.
         runCatching {
                 service.getSecurityLevel(SecurityLevel.STRONGBOX)?.let { strongbox ->
                     SystemLogger.info("Found StrongBox SecurityLevel. Registering interceptor...")
@@ -176,7 +162,6 @@ object Keystore2Interceptor : AbstractKeystoreInterceptor() {
             )
         }
 
-        // Let most calls go through to the real service.
         return TransactionResult.ContinueAndSkipPost
     }
 
@@ -246,11 +231,7 @@ object Keystore2Interceptor : AbstractKeystoreInterceptor() {
                     return TransactionResult.SkipTransaction
                 }
 
-                // Perform the attestation patch.
                 val keyId = KeyIdentifier(callingUid, keyDescriptor.alias)
-
-                // First, try to retrieve the already-patched chain from our cache to ensure
-                // consistency.
                 val cachedChain = KeyMintSecurityLevelInterceptor.getPatchedChain(keyId)
 
                 val finalChain: Array<Certificate>
@@ -260,8 +241,7 @@ object Keystore2Interceptor : AbstractKeystoreInterceptor() {
                     )
                     finalChain = cachedChain
                 } else {
-                    // If no chain is cached (e.g., key existed before simulator started),
-                    // perform a live patch as a fallback. This may still be detectable.
+                    // Live patch fallback for keys created before simulator started
                     SystemLogger.info(
                         "[TX_ID: $txId] No cached chain for $keyId. Performing live patch as a fallback."
                     )
