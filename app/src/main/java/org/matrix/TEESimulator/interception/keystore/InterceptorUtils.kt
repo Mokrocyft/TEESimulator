@@ -108,6 +108,8 @@ object InterceptorUtils {
 
     /** Checks if a reply parcel contains an exception without consuming it. */
     fun hasException(reply: Parcel): Boolean {
-        return runCatching { reply.readException() }.exceptionOrNull() != null
+        val exception = runCatching { reply.readException() }.exceptionOrNull()
+        if (exception != null) reply.setDataPosition(0)
+        return exception != null
     }
 }
